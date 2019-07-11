@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"github.com/juju/errors"
+	"github.com/siddontang/go-log/log"
 	mysqlConn "github.com/zhaochuanyun/go-mysql/client"
 	"github.com/zhaochuanyun/go-mysql/mysql"
 	s "strings"
@@ -43,11 +44,11 @@ type BulkRequest struct {
 	Data   map[string]interface{}
 
 	PkName  string
-	PkValue string
+	PkValue interface{}
 
 	Index    string
 	Type     string
-	ID       string
+	ID       interface{}
 	Parent   string
 	Pipeline string
 }
@@ -68,6 +69,9 @@ func (c *Client) DoBulk(reqs []*BulkRequest) (*mysql.Result, error) {
 	}
 
 	ret, err := c.conn.Execute(buf.String())
+
+	log.Infof("Execute --> %v", buf.String())
+
 	if err != nil {
 		return nil, errors.Trace(err)
 	}
@@ -81,16 +85,25 @@ func (r *BulkRequest) bulk(buf *bytes.Buffer) error {
 		// for delete
 		buf.WriteString(" DELETE FROM ")
 		buf.WriteString(r.Schema + "." + r.Table)
-		buf.WriteString(" WHERE " + r.PkName + " = " + r.PkValue)
+		buf.WriteString(" WHERE " + r.PkName + " = " + trans(r.PkValue))
 	case ActionUpdate:
 		// for update
+		keys := make([]string, 0, len(r.Data))
+		values := make([]interface{}, 0, len(r.Data))
+		for k, v := range r.Data {
+			keys = append(keys, k)
+			values = append(values, v)
+		}
+
 		buf.WriteString(" UPDATE ")
 		buf.WriteString(r.Schema + "." + r.Table + " SET ")
-		for k, v := range r.Data {
-			buf.WriteString(k + " = " + trans(v) + ", ")
+		buf.WriteString(keys[0] + " = " + trans(values[0]))
+
+		for i, v := range keys[1:] {
+			buf.WriteString(", " + v + " = " + trans(values[i+1]))
 		}
-		buf.WriteString(r.PkName + " = " + r.PkValue)
-		buf.WriteString(" WHERE " + r.PkName + " = " + r.PkValue)
+
+		buf.WriteString(" WHERE " + r.PkName + " = " + trans(r.PkValue))
 	default:
 		// for insert
 		keys := make([]string, 0, len(r.Data))
@@ -132,6 +145,9 @@ func Join(a []interface{}, sep string) string {
 }
 
 func trans(v interface{}) string {
+	if v == nil {
+		return "null"
+	}
 	switch v.(type) {
 	case string:
 		return fmt.Sprintf("\"%v\"", v)

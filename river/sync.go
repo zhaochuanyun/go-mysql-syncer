@@ -1,7 +1,6 @@
 package river
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"reflect"
@@ -71,8 +70,6 @@ func (h *eventHandler) OnXID(nextPos mysql.Position) error {
 }
 
 func (h *eventHandler) OnRow(e *canal.RowsEvent) error {
-	log.Infof("OnRow --> %v", e.Binlog)
-
 	rule, ok := h.r.rules[ruleKey(e.Table.Schema, e.Table.Name)]
 	if !ok {
 		return nil
@@ -406,7 +403,7 @@ func (r *River) makeUpdateReqData(req *mysqlsink.BulkRequest, rule *Rule, before
 
 // If id in toml file is none, get primary keys in one row and format them into a string, and PK must not be nil
 // Else get the ID's column in one row and format them into a string
-func (r *River) getDocID(rule *Rule, row []interface{}) (string, string, error) {
+func (r *River) getDocID(rule *Rule, row []interface{}) (string, interface{}, error) {
 	var (
 		ids map[string]interface{}
 		err error
@@ -419,22 +416,15 @@ func (r *River) getDocID(rule *Rule, row []interface{}) (string, string, error) 
 		}
 	}
 
-	var keyBuf bytes.Buffer
-	var valueBuf bytes.Buffer
-
-	sep := ""
-	for i, value := range ids {
+	for key, value := range ids {
 		if value == nil {
-			return "", "", errors.Errorf("The %ds id or PK value is nil", i)
+			return "", "", errors.Errorf("The %ds id or PK value is nil", key)
 		}
 
-		keyBuf.WriteString(fmt.Sprintf("%s%v", sep, i))
-		valueBuf.WriteString(fmt.Sprintf("%s%v", sep, value))
-
-		sep = ":"
+		return fmt.Sprintf("%v", key), value, nil
 	}
 
-	return keyBuf.String(), valueBuf.String(), nil
+	return "", "", nil
 }
 
 func (r *River) doBulk(reqs []*mysqlsink.BulkRequest) error {
