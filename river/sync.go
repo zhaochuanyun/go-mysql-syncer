@@ -161,7 +161,7 @@ func (r *River) syncLoop() {
 		if needFlush {
 			// TODO: retry some times?
 			if err := r.doBulk(reqs); err != nil {
-				log.Errorf("do ES bulk err %v, close sync", err)
+				log.Errorf("do bulk err %v, close sync", err)
 				r.cancel()
 				return
 			}
@@ -196,14 +196,7 @@ func (r *River) makeRequest(rule *Rule, action string, rows [][]interface{}) ([]
 			return nil, errors.Trace(err)
 		}
 
-		parentID := ""
-		if len(rule.Parent) > 0 {
-			if parentID, err = r.getParentID(rule, values, rule.Parent); err != nil {
-				return nil, errors.Trace(err)
-			}
-		}
-
-		req := &mysqlsink.BulkRequest{Schema: rule.SinkSchema, Table: rule.SinkTable, PkName: pkName, PkValue: id, Index: rule.Index, Type: rule.Type, ID: id, Parent: parentID, Pipeline: rule.Pipeline}
+		req := &mysqlsink.BulkRequest{Schema: rule.SinkSchema, Table: rule.SinkTable, PkName: pkName, PkValue: id, Index: rule.Index, Type: rule.Type, ID: id, Pipeline: rule.Pipeline}
 
 		if action == canal.DeleteAction {
 			req.Action = mysqlsink.ActionDelete
@@ -238,23 +231,13 @@ func (r *River) makeUpdateRequest(rule *Rule, rows [][]interface{}) ([]*mysqlsin
 			return nil, errors.Trace(err)
 		}
 
-		beforeParentID, afterParentID := "", ""
-		if len(rule.Parent) > 0 {
-			if beforeParentID, err = r.getParentID(rule, rows[i], rule.Parent); err != nil {
-				return nil, errors.Trace(err)
-			}
-			if afterParentID, err = r.getParentID(rule, rows[i+1], rule.Parent); err != nil {
-				return nil, errors.Trace(err)
-			}
-		}
+		req := &mysqlsink.BulkRequest{Schema: rule.SinkSchema, Table: rule.SinkTable, PkName: pkName, PkValue: beforeID, Index: rule.Index, Type: rule.Type, ID: beforeID}
 
-		req := &mysqlsink.BulkRequest{Schema: rule.SinkSchema, Table: rule.SinkTable, PkName: pkName, PkValue: beforeID, Index: rule.Index, Type: rule.Type, ID: beforeID, Parent: beforeParentID}
-
-		if beforeID != afterID || beforeParentID != afterParentID {
+		if beforeID != afterID {
 			req.Action = mysqlsink.ActionDelete
 			reqs = append(reqs, req)
 
-			req = &mysqlsink.BulkRequest{Index: rule.Index, Type: rule.Type, ID: afterID, Parent: afterParentID, Pipeline: rule.Pipeline}
+			req = &mysqlsink.BulkRequest{Index: rule.Index, Type: rule.Type, ID: afterID, Pipeline: rule.Pipeline}
 			r.makeInsertReqData(req, rule, rows[i+1])
 
 			r.st.DeleteNum.Add(1)
@@ -337,11 +320,7 @@ func (r *River) makeReqColumnData(col *schema.TableColumn, value interface{}) in
 	case schema.TYPE_DATETIME, schema.TYPE_TIMESTAMP:
 		switch v := value.(type) {
 		case string:
-			vt, err := time.ParseInLocation(mysql.TimeFormat, string(v), time.Local)
-			if err != nil || vt.IsZero() { // failed to parse date or zero date
-				return nil
-			}
-			return vt.Format(time.RFC3339)
+			return v
 		}
 	case schema.TYPE_DATE:
 		switch v := value.(type) {
@@ -456,15 +435,6 @@ func (r *River) getDocID(rule *Rule, row []interface{}) (string, string, error) 
 	}
 
 	return keyBuf.String(), valueBuf.String(), nil
-}
-
-func (r *River) getParentID(rule *Rule, row []interface{}, columnName string) (string, error) {
-	index := rule.TableInfo.FindColumn(columnName)
-	if index < 0 {
-		return "", errors.Errorf("parent id not found %s(%s)", rule.TableInfo.Name, columnName)
-	}
-
-	return fmt.Sprint(row[index]), nil
 }
 
 func (r *River) doBulk(reqs []*mysqlsink.BulkRequest) error {

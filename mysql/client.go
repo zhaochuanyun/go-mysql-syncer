@@ -78,11 +78,21 @@ func (c *Client) DoBulk(reqs []*BulkRequest) (*mysql.Result, error) {
 func (r *BulkRequest) bulk(buf *bytes.Buffer) error {
 	switch r.Action {
 	case ActionDelete:
-		//nothing to do
+		// for delete
+		buf.WriteString(" DELETE FROM ")
+		buf.WriteString(r.Schema + "." + r.Table)
+		buf.WriteString(" WHERE " + r.PkName + " = " + r.PkValue)
 	case ActionUpdate:
-		//
+		// for update
+		buf.WriteString(" UPDATE ")
+		buf.WriteString(r.Schema + "." + r.Table + " SET ")
+		for k, v := range r.Data {
+			buf.WriteString(k + " = " + trans(v) + ", ")
+		}
+		buf.WriteString(r.PkName + " = " + r.PkValue)
+		buf.WriteString(" WHERE " + r.PkName + " = " + r.PkValue)
 	default:
-		//for insert
+		// for insert
 		keys := make([]string, 0, len(r.Data))
 		values := make([]interface{}, 0, len(r.Data))
 		for k, v := range r.Data {
@@ -112,10 +122,20 @@ func Join(a []interface{}, sep string) string {
 	}
 
 	buffer := &bytes.Buffer{}
-	buffer.WriteString(fmt.Sprintf("\"%v\"", a[0]))
+
+	buffer.WriteString(trans(a[0]))
 	for i := 1; i < len(a); i++ {
 		buffer.WriteString(sep)
-		buffer.WriteString(fmt.Sprintf("\"%v\"", a[i]))
+		buffer.WriteString(trans(a[i]))
 	}
 	return buffer.String()
+}
+
+func trans(v interface{}) string {
+	switch v.(type) {
+	case string:
+		return fmt.Sprintf("\"%v\"", v)
+	default:
+		return fmt.Sprintf("%v", v)
+	}
 }
