@@ -13,10 +13,6 @@ import (
 )
 
 var configFile = flag.String("config", "./etc/river.toml", "go-mysql-syncer config file")
-var my_addr = flag.String("my_addr", "", "MySQL addr")
-var my_user = flag.String("my_user", "", "MySQL user")
-var my_pass = flag.String("my_pass", "", "MySQL password")
-var es_addr = flag.String("es_addr", "", "Elasticsearch addr")
 var data_dir = flag.String("data_dir", "", "path for go-mysql-syncer to save data")
 var server_id = flag.Int("server_id", 0, "MySQL server id, as a pseudo slave")
 var flavor = flag.String("flavor", "", "flavor: mysql or mariadb")
@@ -42,18 +38,6 @@ func main() {
 	if err != nil {
 		println(errors.ErrorStack(err))
 		return
-	}
-
-	if len(*my_addr) > 0 {
-		cfg.SourceAddr = *my_addr
-	}
-
-	if len(*my_user) > 0 {
-		cfg.SourceUser = *my_user
-	}
-
-	if len(*my_pass) > 0 {
-		cfg.SourcePassword = *my_pass
 	}
 
 	if *server_id > 0 {
