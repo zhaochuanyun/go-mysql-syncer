@@ -90,7 +90,7 @@ func (h *eventHandler) OnRow(e *canal.RowsEvent) error {
 
 	if err != nil {
 		h.r.cancel()
-		return errors.Errorf("make %s ES request err %v, close sync", e.Action, err)
+		return errors.Errorf("make %s request err %v, close sync", e.Action, err)
 	}
 
 	h.r.syncCh <- reqs
@@ -107,7 +107,7 @@ func (h *eventHandler) OnPosSynced(pos mysql.Position, force bool) error {
 }
 
 func (h *eventHandler) String() string {
-	return "ESRiverEventHandler"
+	return "MysqlRiverEventHandler"
 }
 
 func (r *River) syncLoop() {
@@ -193,7 +193,7 @@ func (r *River) makeRequest(rule *Rule, action string, rows [][]interface{}) ([]
 			return nil, errors.Trace(err)
 		}
 
-		req := &mysqlsink.BulkRequest{Schema: rule.SinkSchema, Table: rule.SinkTable, PkName: pkName, PkValue: id, Index: rule.Index, Type: rule.Type, ID: id, Pipeline: rule.Pipeline}
+		req := &mysqlsink.BulkRequest{Schema: rule.SinkSchema, Table: rule.SinkTable, PkName: pkName, PkValue: id}
 
 		if action == canal.DeleteAction {
 			req.Action = mysqlsink.ActionDelete
@@ -217,40 +217,19 @@ func (r *River) makeUpdateRequest(rule *Rule, rows [][]interface{}) ([]*mysqlsin
 	reqs := make([]*mysqlsink.BulkRequest, 0, len(rows))
 
 	for i := 0; i < len(rows); i += 2 {
-		pkName, beforeID, err := r.getDocID(rule, rows[i])
+		pkName, pkValue, err := r.getDocID(rule, rows[i])
 		if err != nil {
 			return nil, errors.Trace(err)
 		}
 
-		_, afterID, err := r.getDocID(rule, rows[i+1])
-
 		if err != nil {
 			return nil, errors.Trace(err)
 		}
 
-		req := &mysqlsink.BulkRequest{Schema: rule.SinkSchema, Table: rule.SinkTable, PkName: pkName, PkValue: beforeID, Index: rule.Index, Type: rule.Type, ID: beforeID}
+		req := &mysqlsink.BulkRequest{Schema: rule.SinkSchema, Table: rule.SinkTable, PkName: pkName, PkValue: pkValue}
 
-		if beforeID != afterID {
-			req.Action = mysqlsink.ActionDelete
-			reqs = append(reqs, req)
-
-			req = &mysqlsink.BulkRequest{Index: rule.Index, Type: rule.Type, ID: afterID, Pipeline: rule.Pipeline}
-			r.makeInsertReqData(req, rule, rows[i+1])
-
-			r.st.DeleteNum.Add(1)
-			r.st.InsertNum.Add(1)
-		} else {
-			if len(rule.Pipeline) > 0 {
-				// Pipelines can only be specified on index action
-				r.makeInsertReqData(req, rule, rows[i+1])
-				// Make sure action is index, not create
-				req.Action = mysqlsink.ActionUpdate
-				req.Pipeline = rule.Pipeline
-			} else {
-				r.makeUpdateReqData(req, rule, rows[i], rows[i+1])
-			}
-			r.st.UpdateNum.Add(1)
-		}
+		r.makeUpdateReqData(req, rule, rows[i], rows[i+1])
+		r.st.UpdateNum.Add(1)
 
 		reqs = append(reqs, req)
 	}

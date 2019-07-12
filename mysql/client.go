@@ -45,38 +45,35 @@ type BulkRequest struct {
 
 	PkName  string
 	PkValue interface{}
-
-	Index    string
-	Type     string
-	ID       interface{}
-	Parent   string
-	Pipeline string
 }
 
 // Bulk sends the bulk request.
 func (c *Client) Bulk(reqs []*BulkRequest) (*mysql.Result, error) {
-	return c.DoBulk(reqs)
-}
+	bufs := make([]bytes.Buffer, len(reqs))
 
-// DoBulk sends the bulk.
-func (c *Client) DoBulk(reqs []*BulkRequest) (*mysql.Result, error) {
-	var buf bytes.Buffer
-
-	for _, req := range reqs {
-		if err := req.bulk(&buf); err != nil {
+	for i, req := range reqs {
+		if err := req.bulk(&bufs[i]); err != nil {
 			return nil, errors.Trace(err)
 		}
 	}
 
-	ret, err := c.conn.Execute(buf.String())
+	return c.DoBulk(bufs)
+}
 
-	log.Infof("Execute --> %v", buf.String())
+// DoBulk
+func (c *Client) DoBulk(bufs []bytes.Buffer) (*mysql.Result, error) {
+	for _, buf := range bufs {
+		_, err := c.conn.Execute(buf.String())
 
-	if err != nil {
-		return nil, errors.Trace(err)
+		if err != nil {
+			log.Errorf("Execute Error! --> %v", buf.String())
+			return nil, errors.Trace(err)
+		}
+
+		log.Infof("Execute success --> %v", buf.String())
 	}
 
-	return ret, errors.Trace(err)
+	return nil, nil
 }
 
 func (r *BulkRequest) bulk(buf *bytes.Buffer) error {
@@ -113,7 +110,7 @@ func (r *BulkRequest) bulk(buf *bytes.Buffer) error {
 			values = append(values, v)
 		}
 
-		buf.WriteString(" INSERT INTO ")
+		buf.WriteString(" REPLACE INTO ")
 		buf.WriteString(r.Schema + "." + r.Table)
 		buf.WriteString(" ( ")
 		buf.WriteString(s.Join(keys, ","))

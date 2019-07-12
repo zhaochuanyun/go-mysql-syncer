@@ -32,7 +32,6 @@ type River struct {
 	wg sync.WaitGroup
 
 	mysql *mysql.Client
-	//es    *elastic.Client
 
 	st *stat
 
@@ -77,7 +76,6 @@ func NewRiver(c *Config) (*River, error) {
 	cfg.User = r.c.SinkUser
 	cfg.Password = r.c.SinkPassword
 	r.mysql = mysql.NewClient(cfg)
-	//r.es = elastic.NewClient(cfg)
 
 	r.st = &stat{r: r}
 	go r.st.Run(r.c.StatAddr)
@@ -96,7 +94,6 @@ func (r *River) newCanal() error {
 	cfg.ServerID = r.c.ServerID
 	cfg.Dump.ExecutionPath = r.c.DumpExec
 	cfg.Dump.DiscardErr = false
-	cfg.Dump.SkipMasterData = r.c.SkipMasterData
 
 	for _, s := range r.c.Sources {
 		for _, t := range s.Tables {
@@ -114,9 +111,9 @@ func (r *River) prepareCanal() error {
 	dbs := map[string]struct{}{}
 	tables := make([]string, 0, len(r.rules))
 	for _, rule := range r.rules {
-		db = rule.Schema
-		dbs[rule.Schema] = struct{}{}
-		tables = append(tables, rule.Table)
+		db = rule.SourceSchema
+		dbs[rule.SourceSchema] = struct{}{}
+		tables = append(tables, rule.SourceTable)
 	}
 
 	if len(dbs) == 1 {
@@ -229,35 +226,28 @@ func (r *River) prepareRule() error {
 	if r.c.Rules != nil {
 		// then, set custom mapping rule
 		for _, rule := range r.c.Rules {
-			if len(rule.Schema) == 0 {
+			if len(rule.SourceSchema) == 0 {
 				return errors.Errorf("empty schema not allowed for rule")
 			}
 
-			if regexp.QuoteMeta(rule.Table) != rule.Table {
+			if regexp.QuoteMeta(rule.SourceTable) != rule.SourceTable {
 				//wildcard table
-				tables, ok := wildtables[ruleKey(rule.Schema, rule.Table)]
+				tables, ok := wildtables[ruleKey(rule.SourceSchema, rule.SourceTable)]
 				if !ok {
-					return errors.Errorf("wildcard table for %s.%s is not defined in source", rule.Schema, rule.Table)
-				}
-
-				if len(rule.Index) == 0 {
-					return errors.Errorf("wildcard table rule %s.%s must have a index, can not empty", rule.Schema, rule.Table)
+					return errors.Errorf("wildcard table for %s.%s is not defined in source", rule.SourceSchema, rule.SourceTable)
 				}
 
 				rule.prepare()
 
 				for _, table := range tables {
-					rr := r.rules[ruleKey(rule.Schema, table)]
-					rr.Index = rule.Index
-					rr.Type = rule.Type
-					rr.Parent = rule.Parent
+					rr := r.rules[ruleKey(rule.SourceSchema, table)]
 					rr.ID = rule.ID
 					rr.FieldMapping = rule.FieldMapping
 				}
 			} else {
-				key := ruleKey(rule.Schema, rule.Table)
+				key := ruleKey(rule.SourceSchema, rule.SourceTable)
 				if _, ok := r.rules[key]; !ok {
-					return errors.Errorf("rule %s, %s not defined in source", rule.Schema, rule.Table)
+					return errors.Errorf("rule %s, %s not defined in source", rule.SourceSchema, rule.SourceTable)
 				}
 				rule.prepare()
 				r.rules[key] = rule
@@ -267,13 +257,13 @@ func (r *River) prepareRule() error {
 
 	rules := make(map[string]*Rule)
 	for key, rule := range r.rules {
-		if rule.TableInfo, err = r.canal.GetTable(rule.Schema, rule.Table); err != nil {
+		if rule.TableInfo, err = r.canal.GetTable(rule.SourceSchema, rule.SourceTable); err != nil {
 			return errors.Trace(err)
 		}
 
 		if len(rule.TableInfo.PKColumns) == 0 {
 			if !r.c.SkipNoPkTable {
-				return errors.Errorf("%s.%s must have a PK for a column", rule.Schema, rule.Table)
+				return errors.Errorf("%s.%s must have a PK for a column", rule.SourceSchema, rule.SourceTable)
 			}
 
 			log.Errorf("ignored table without a primary key: %s\n", rule.TableInfo.Name)

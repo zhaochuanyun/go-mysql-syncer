@@ -60,10 +60,6 @@ func main() {
 		cfg.ServerID = uint32(*server_id)
 	}
 
-	if len(*es_addr) > 0 {
-		cfg.ESAddr = *es_addr
-	}
-
 	if len(*data_dir) > 0 {
 		cfg.DataDir = *data_dir
 	}

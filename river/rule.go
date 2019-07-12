@@ -1,15 +1,10 @@
 package river
 
 import (
-	"strings"
-
 	"github.com/zhaochuanyun/go-mysql/schema"
 )
 
-// Rule is the rule for how to sync data from MySQL to ES.
-// If you want to sync MySQL data into elasticsearch, you must set a rule to let use know how to do it.
-// The mapping rule may thi: schema + table <-> index + document type.
-// schema and table is for MySQL, index and document type is for Elasticsearch.
+// Rule is the rule for how to sync data from MySQL to MySQL.
 type Rule struct {
 	ID           []string `toml:"id"`
 	SourceSchema string   `toml:"source_schema"`
@@ -17,15 +12,6 @@ type Rule struct {
 	SinkSchema   string   `toml:"sink_schema"`
 	SinkTable    string   `toml:"sink_table"`
 
-	Schema string `toml:"schema"`
-	Table  string `toml:"table"`
-	Index  string `toml:"index"`
-	Type   string `toml:"type"`
-	Parent string `toml:"parent"`
-
-	// Default, a MySQL table field name is mapped to Elasticsearch field name.
-	// Sometimes, you want to use different name, e.g, the MySQL file name is title,
-	// but in Elasticsearch, you want to name it my_title.
 	FieldMapping map[string]string `toml:"field"`
 
 	// MySQL table information
@@ -33,21 +19,13 @@ type Rule struct {
 
 	//only MySQL fields in filter will be synced , default sync all fields
 	Filter []string `toml:"filter"`
-
-	// Elasticsearch pipeline
-	// To pre-process documents before indexing
-	Pipeline string `toml:"pipeline"`
 }
 
 func newDefaultRule(schema string, table string) *Rule {
 	r := new(Rule)
 
-	r.Schema = schema
-	r.Table = table
-
-	lowerTable := strings.ToLower(table)
-	r.Index = lowerTable
-	r.Type = lowerTable
+	r.SourceSchema = schema
+	r.SinkTable = table
 
 	r.FieldMapping = make(map[string]string)
 
@@ -58,19 +36,6 @@ func (r *Rule) prepare() error {
 	if r.FieldMapping == nil {
 		r.FieldMapping = make(map[string]string)
 	}
-
-	if len(r.Index) == 0 {
-		r.Index = r.Table
-	}
-
-	if len(r.Type) == 0 {
-		r.Type = r.Index
-	}
-
-	// ES must use a lower-case Type
-	// Here we also use for Index
-	r.Index = strings.ToLower(r.Index)
-	r.Type = strings.ToLower(r.Type)
 
 	return nil
 }

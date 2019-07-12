@@ -30,15 +30,9 @@ type Config struct {
 	Flavor   string `toml:"flavor"`
 	DataDir  string `toml:"data_dir"`
 
-	ESHttps    bool   `toml:"es_https"`
-	ESAddr     string `toml:"es_addr"`
-	ESUser     string `toml:"es_user"`
-	ESPassword string `toml:"es_pass"`
-
 	StatAddr string `toml:"stat_addr"`
 
-	DumpExec       string `toml:"mysqldump"`
-	SkipMasterData bool   `toml:"skip_master_data"`
+	DumpExec string `toml:"mysqldump"`
 
 	Sources []SourceConfig `toml:"source"`
 
